@@ -10,6 +10,7 @@
 
 import type * as availability from "../availability.js";
 import type * as reassignments from "../reassignments.js";
+import type * as seed from "../seed.js";
 import type * as tasks from "../tasks.js";
 import type * as users from "../users.js";
 
@@ -22,6 +23,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   availability: typeof availability;
   reassignments: typeof reassignments;
+  seed: typeof seed;
   tasks: typeof tasks;
   users: typeof users;
 }>;
