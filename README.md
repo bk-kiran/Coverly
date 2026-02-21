@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Coverly — AI-Powered Team Coverage & Task Reassignment
 
-## Getting Started
+Built at HackHer 2026 @ UMass Amherst
 
-First, run the development server:
+Team: Sai Pulavarthy & Kiran Balasundaram Kuppuraj
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Coverly eliminates the chaos of last-minute coverage gaps. When a team member goes OOO, Coverly's AI engine instantly analyzes your team's workload, skills, and availability — then suggests the best person for every at-risk task, complete with an auto-generated handoff doc.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The Problem
+When someone goes out of the office, managers scramble. Who has bandwidth? Who has the right skills? What context does the new owner need? This process is manual, slow, and error-prone. Coverly solves it in one click.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Features
+Team Member Side
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Availability Management — Mark yourself OOO for a date range, set partial availability (e.g. "mornings only"), or flag yourself as "at capacity."
+My Tasks View — See all assigned tasks with deadlines, priorities, and project tags
+Handoff Notes — Add context to tasks before going OOO ("blocked on X", "check the Figma first")
+Notifications — Get notified when a task is reassigned to you, with the AI-generated handoff note attached
 
-## Learn More
+Manager Side
 
-To learn more about Next.js, take a look at the following resources:
+Team Availability Dashboard — Calendar heatmap showing who's available each day. Green = full capacity, yellow = partial, red = OOO or overloaded
+Task Board — All tasks across the team, filterable by project, priority, deadline, and assignee. At-risk tasks are auto-flagged
+AI Reassignment Engine — Click "Suggest Coverage," and the AI returns a ranked list of who should take each task, with plain-English reasoning ("Alex has 2 tasks this week and has handled design reviews before")
+Handoff Doc Generator — Auto-generates a concise handoff note per task once a reassignment is approved
+Approve / Tweak / Reject Flow — Review AI suggestions in a side panel, swap out suggested people, and approve in one click
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Smart Features
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Workload Score — Live score per team member based on open tasks, deadline urgency, and availability. Prevents the AI from piling everything on one person
+Overload Alerts — Warns managers if approving a reassignment would push someone over their task threshold
+Skill Tags — Team members have tags (e.g. "frontend", "client comms", "data analysis") that the AI factors into suggestions
+Deadline Risk Feed — Sidebar showing tasks with approaching deadlines whose owners are unavailable, sorted by urgency
 
-## Deploy on Vercel
+Run the App
+bashnpm run dev
+Open http://localhost:3000 in your browser.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+How the AI Works
+Reassignment Engine
+The AI receives a snapshot of every team member's current task count, workload score, skill tags, and availability window. It returns a ranked list of suggested assignees per task with a short reasoning blurb explaining the recommendation.
+Handoff Doc Generator
+Once a reassignment is approved, the AI synthesizes the original task description, the previous owner's notes, the deadline, and the priority level into a clean 3-sentence handoff summary — automatically attached to the new assignee's task.
