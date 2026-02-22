@@ -11,9 +11,28 @@ export default defineSchema({
     workloadScore: v.number(),
     avatarUrl: v.optional(v.string()),
     teamId: v.optional(v.string()),
+    department: v.optional(v.string()),
+    timezone: v.optional(v.string()),
+    weeklyCapacity: v.optional(v.number()),
+    currentFocus: v.optional(v.string()),
+    orgId: v.optional(v.string()),
+    managedOrgId: v.optional(v.string()),
   })
     .index("by_clerkId", ["clerkId"])
-    .index("by_teamId", ["teamId"]),
+    .index("by_teamId", ["teamId"])
+    .index("by_orgId", ["orgId"]),
+
+  orgs: defineTable({
+    name: v.string(),
+    managerId: v.string(),
+    inviteCode: v.string(),
+    department: v.optional(v.string()),
+    parentOrgId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_manager", ["managerId"])
+    .index("by_invite_code", ["inviteCode"])
+    .index("by_parent", ["parentOrgId"]),
 
   availability: defineTable({
     userId: v.string(),

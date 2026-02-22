@@ -1,4 +1,10 @@
-import { Task, TaskPriority } from "@/types";
+import { TaskPriority } from "@/types";
+
+type TaskLike = {
+  status: string;
+  priority: TaskPriority;
+  deadline: string;
+};
 
 const PRIORITY_WEIGHTS: Record<TaskPriority, number> = {
   critical: 40,
@@ -17,7 +23,7 @@ function getDeadlineMultiplier(deadline: string): number {
   return 1;
 }
 
-export function computeWorkloadScore(tasks: Task[]): number {
+export function computeWorkloadScore(tasks: TaskLike[]): number {
   const openTasks = tasks.filter((t) => t.status !== "done");
   if (openTasks.length === 0) return 0;
 

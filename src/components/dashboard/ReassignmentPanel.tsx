@@ -29,15 +29,15 @@ const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
   low:      { label: "Low",      className: "bg-gray-100 text-gray-600 border-gray-200" },
 };
 
-export function ReassignmentPanel({ managerId }: { managerId: string }) {
+export function ReassignmentPanel({ managerId, clerkId }: { managerId: string; clerkId?: string }) {
   const [suggestions, setSuggestions] = useState<ReassignmentSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<ReassignmentSuggestion | null>(null);
   const [overrides, setOverrides] = useState<Record<string, string>>({});
 
-  const atRiskTasks = useQuery(api.tasks.getAtRiskTasks);
-  const allTasks = useQuery(api.tasks.getAllTasks);
-  const teamMembers = useQuery(api.users.getTeamMembers);
+  const atRiskTasks = useQuery(api.tasks.getAtRiskTasks, { clerkId });
+  const allTasks = useQuery(api.tasks.getAllTasks, { clerkId });
+  const teamMembers = useQuery(api.users.getTeamMembers, { clerkId });
 
   const createReassignment = useMutation(api.reassignments.createReassignment);
   const approveReassignment = useMutation(api.reassignments.approveReassignment);

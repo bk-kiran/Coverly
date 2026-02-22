@@ -63,9 +63,9 @@ function HeatmapSkeleton() {
   );
 }
 
-export function AvailabilityHeatmap() {
-  const members = useQuery(api.users.getTeamMembers);
-  const allAvailability = useQuery(api.availability.getAllAvailability);
+export function AvailabilityHeatmap({ clerkId }: { clerkId?: string }) {
+  const members = useQuery(api.users.getTeamMembers, { clerkId });
+  const allAvailability = useQuery(api.availability.getAllAvailability, { clerkId });
 
   const today = new Date();
   const days = Array.from({ length: 14 }, (_, i) => addDays(today, i));

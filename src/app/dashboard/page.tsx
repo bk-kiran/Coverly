@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertTriangle, Users, CheckSquare, Zap, Plus } from "lucide-react";
+import { AlertTriangle, Users, CheckSquare, Zap, Plus, Copy, Check, Building2 } from "lucide-react";
 import { format } from "date-fns";
 
 const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
@@ -58,18 +58,62 @@ export default function DashboardPage() {
   const router = useRouter();
 
   const me = useQuery(api.users.getMe, { clerkId: clerkUser?.id });
-  const atRiskTasks = useQuery(api.tasks.getAtRiskTasks);
-  const allTasks = useQuery(api.tasks.getAllTasks);
-  const teamMembers = useQuery(api.users.getTeamMembers);
+  const atRiskTasks = useQuery(api.tasks.getAtRiskTasks, { clerkId: clerkUser?.id });
+  const allTasks = useQuery(api.tasks.getAllTasks, { clerkId: clerkUser?.id });
+  const teamMembers = useQuery(api.users.getTeamMembers, { clerkId: clerkUser?.id });
+  const myOrg = useQuery(api.orgs.getMyManagedOrg);
+  const subOrgs = useQuery(
+    api.orgs.getSubOrgs,
+    myOrg?._id ? { parentOrgId: myOrg._id as string } : "skip"
+  );
   const createTask = useMutation(api.tasks.createTask);
+  const createSubOrg = useMutation(api.orgs.createSubOrg);
 
   const [isOpen, setIsOpen] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [isSaving, setIsSaving] = useState(false);
 
+  // Org management state
+  const [copied, setCopied] = useState(false);
+  const [isSubOrgOpen, setIsSubOrgOpen] = useState(false);
+  const [subOrgForm, setSubOrgForm] = useState({ name: "", department: "" });
+  const [isCreatingSubOrg, setIsCreatingSubOrg] = useState(false);
+  const [newSubOrgCode, setNewSubOrgCode] = useState<string | null>(null);
+
+  function handleCopyInvite() {
+    if (!myOrg?.inviteCode) return;
+    navigator.clipboard.writeText(
+      `${window.location.origin}/join/${myOrg.inviteCode}`
+    );
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleCreateSubOrg() {
+    if (!myOrg?._id || !subOrgForm.name.trim()) return;
+    setIsCreatingSubOrg(true);
+    try {
+      const result = await createSubOrg({
+        name: subOrgForm.name.trim(),
+        department: subOrgForm.department.trim() || undefined,
+        parentOrgId: myOrg._id as string,
+      });
+      setNewSubOrgCode((result as { subOrgId: string; inviteCode: string }).inviteCode);
+      setSubOrgForm({ name: "", department: "" });
+    } finally {
+      setIsCreatingSubOrg(false);
+    }
+  }
+
+  function handleCloseSubOrgDialog() {
+    setIsSubOrgOpen(false);
+    setNewSubOrgCode(null);
+    setSubOrgForm({ name: "", department: "" });
+  }
+
   useEffect(() => {
     if (me === undefined) return;
-    if (me === null) { router.replace("/onboarding"); return; }
+    if (me === null || !me.orgId) { router.replace("/onboarding"); return; }
     if (me.role === "member") { router.replace("/my"); return; }
   }, [me, router]);
 
@@ -80,7 +124,7 @@ export default function DashboardPage() {
       </div>
     );
   }
-  if (me === null || me.role === "member") return null;
+  if (me === null || !me.orgId || me.role === "member") return null;
 
   const overloadedMembers = (teamMembers ?? []).filter(
     (m) => m.workloadScore > 80
@@ -168,6 +212,108 @@ export default function DashboardPage() {
           </Button>
         </div>
 
+        {/* Org management card */}
+        {myOrg && (
+          <Card className="bg-white shadow-sm">
+            <CardContent className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-gray-100">
+
+                {/* LEFT — Org info */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-bold text-gray-900 truncate">{myOrg.name}</p>
+                      {myOrg.department && (
+                        <p className="text-xs text-gray-400">{myOrg.department}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Invite Code
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-2xl font-bold tracking-[0.2em] text-gray-900">
+                        {myOrg.inviteCode}
+                      </span>
+                      <button
+                        onClick={handleCopyInvite}
+                        className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium border transition-all ${
+                          copied
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="h-3.5 w-3.5" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" />
+                            Copy link
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      Share this code or link so members can join your team.
+                    </p>
+                  </div>
+                </div>
+
+                {/* RIGHT — Sub-orgs */}
+                <div className="space-y-3 md:pl-6">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Sub-orgs
+                    </p>
+                    <button
+                      onClick={() => setIsSubOrgOpen(true)}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-600 border border-blue-200 hover:bg-blue-50 transition-colors"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Create
+                    </button>
+                  </div>
+
+                  {subOrgs === undefined ? (
+                    <p className="text-xs text-gray-400">Loading...</p>
+                  ) : subOrgs.length === 0 ? (
+                    <p className="text-xs text-gray-400">
+                      No sub-orgs yet. Create one to split your team into departments.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {subOrgs.map((sub) => (
+                        <div
+                          key={sub._id}
+                          className="flex items-center justify-between rounded-lg bg-gray-50 border border-gray-100 px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">
+                              {sub.name}
+                            </p>
+                            {sub.department && (
+                              <p className="text-xs text-gray-400">{sub.department}</p>
+                            )}
+                          </div>
+                          <span className="font-mono text-xs text-gray-500 flex-shrink-0 ml-3">
+                            {sub.inviteCode}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {stats.map((stat) => (
@@ -199,7 +345,7 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
-                <AvailabilityHeatmap />
+                <AvailabilityHeatmap clerkId={clerkUser?.id} />
               </CardContent>
             </Card>
           </div>
@@ -213,7 +359,7 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
-                <ReassignmentPanel managerId={(me?._id as string) ?? ""} />
+                <ReassignmentPanel managerId={(me?._id as string) ?? ""} clerkId={clerkUser?.id} />
               </CardContent>
             </Card>
           </div>
@@ -437,6 +583,93 @@ export default function DashboardPage() {
               {isSaving ? "Creating..." : "Create Task"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Sub-org Dialog */}
+      <Dialog open={isSubOrgOpen} onOpenChange={(open) => { if (!open) handleCloseSubOrgDialog(); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Create Sub-org</DialogTitle>
+          </DialogHeader>
+
+          {newSubOrgCode ? (
+            /* Success state */
+            <div className="space-y-4 py-2">
+              <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-5 text-center space-y-3">
+                <div className="flex justify-center">
+                  <div className="rounded-full bg-emerald-100 p-3">
+                    <Check className="h-6 w-6 text-emerald-600" />
+                  </div>
+                </div>
+                <p className="font-semibold text-emerald-900">Sub-org created!</p>
+                <div className="space-y-1">
+                  <p className="text-xs text-emerald-700">Invite code</p>
+                  <p className="font-mono text-2xl font-bold tracking-[0.2em] text-emerald-900">
+                    {newSubOrgCode}
+                  </p>
+                </div>
+                <p className="text-xs text-emerald-700">
+                  Share this code (or{" "}
+                  <button
+                    className="underline font-medium"
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        `${window.location.origin}/join/${newSubOrgCode}`
+                      );
+                    }}
+                  >
+                    copy the link
+                  </button>
+                  ) with the members who should join this sub-org.
+                </p>
+              </div>
+              <Button className="w-full" onClick={handleCloseSubOrgDialog}>
+                Done
+              </Button>
+            </div>
+          ) : (
+            /* Form state */
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">Sub-org Name *</label>
+                <input
+                  type="text"
+                  value={subOrgForm.name}
+                  onChange={(e) => setSubOrgForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Frontend Team"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">
+                  Department
+                  <span className="ml-1 font-normal text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={subOrgForm.department}
+                  onChange={(e) => setSubOrgForm((f) => ({ ...f, department: e.target.value }))}
+                  placeholder="e.g. Engineering"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" size="sm" onClick={handleCloseSubOrgDialog}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleCreateSubOrg}
+                  disabled={!subOrgForm.name.trim() || isCreatingSubOrg}
+                >
+                  {isCreatingSubOrg ? "Creating..." : "Create Sub-org"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

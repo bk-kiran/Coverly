@@ -18,7 +18,7 @@ export default function Home() {
       return;
     }
     if (me === undefined) return; // still loading from Convex
-    if (me === null) {
+    if (me === null || !me.orgId) {
       router.replace("/onboarding");
       return;
     }

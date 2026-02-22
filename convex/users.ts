@@ -27,12 +27,36 @@ export const getUserById = query({
 });
 
 export const getTeamMembers = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db
+  args: { clerkId: v.optional(v.string()) },
+  handler: async (ctx, { clerkId }) => {
+    if (!clerkId) {
+      return await ctx.db
+        .query("users")
+        .filter((q) => q.eq(q.field("role"), "member"))
+        .collect();
+    }
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", clerkId))
+      .first();
+    if (!user?.orgId) {
+      return await ctx.db
+        .query("users")
+        .filter((q) => q.eq(q.field("role"), "member"))
+        .collect();
+    }
+    const orgIds: string[] = [user.orgId];
+    const org = await ctx.db
+      .query("orgs")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((q: any) => q.eq(q.field("_id"), user.orgId))
+      .first();
+    if (org?.parentOrgId) orgIds.push(org.parentOrgId);
+    const allMembers = await ctx.db
       .query("users")
       .filter((q) => q.eq(q.field("role"), "member"))
       .collect();
+    return allMembers.filter((m) => m.orgId && orgIds.includes(m.orgId));
   },
 });
 
@@ -44,10 +68,12 @@ export const upsertUser = mutation({
     role: v.union(v.literal("manager"), v.literal("member")),
     skillTags: v.array(v.string()),
     avatarUrl: v.optional(v.string()),
+    department: v.optional(v.string()),
+    timezone: v.optional(v.string()),
+    weeklyCapacity: v.optional(v.number()),
+    currentFocus: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    console.log("upsertUser called with:", args);
-
     const existing = await ctx.db
       .query("users")
       .withIndex("by_clerkId", (q) => q.eq("clerkId", args.clerkId))
@@ -60,17 +86,18 @@ export const upsertUser = mutation({
         role: args.role,
         skillTags: args.skillTags,
         avatarUrl: args.avatarUrl,
+        department: args.department,
+        timezone: args.timezone,
+        weeklyCapacity: args.weeklyCapacity,
+        currentFocus: args.currentFocus,
       });
-      console.log("upsertUser result: patched existing", existing._id);
       return existing._id;
     }
 
-    const newId = await ctx.db.insert("users", {
+    return await ctx.db.insert("users", {
       ...args,
       workloadScore: 0,
     });
-    console.log("upsertUser result: inserted new user", newId);
-    return newId;
   },
 });
 
