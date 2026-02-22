@@ -3,6 +3,8 @@ import localFont from "next/font/local";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ConvexClientProvider } from "@/components/providers";
 import { NavbarWrapper } from "@/components/NavbarWrapper";
+import { SidebarWrapper } from "@/components/SidebarWrapper";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -29,13 +31,21 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en">
+      <html lang="en" suppressHydrationWarning>
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+          suppressHydrationWarning
         >
           <ConvexClientProvider>
-            <NavbarWrapper />
-            {children}
+            <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+              <NavbarWrapper />
+              <div className="flex">
+                <SidebarWrapper />
+                <main className="flex-1 min-h-screen">
+                  {children}
+                </main>
+              </div>
+            </ThemeProvider>
           </ConvexClientProvider>
         </body>
       </html>

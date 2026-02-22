@@ -58,11 +58,17 @@ export default function OnboardingPage() {
     }
   }, [searchParams]);
 
-  // Redirect users who already completed onboarding (have an orgId)
+  // For NEW users (no orgs): redirect once they have an org
   useEffect(() => {
-    if (!me?.orgId) return;
-    router.replace(me.role === "manager" ? "/dashboard" : "/my");
-  }, [me, router]);
+    if (!clerkLoaded || me === undefined) return;
+    if (!me) return;
+    // Only auto-redirect brand-new onboarding completions, not returning users
+    const hasOrgs = !!(me.activeOrgId ?? me.orgId);
+    const isReturningUser = !!(me.orgIds?.length || me.orgId);
+    if (hasOrgs && !isReturningUser) {
+      router.replace(me.role === "manager" ? "/dashboard" : "/my");
+    }
+  }, [me, router, clerkLoaded]);
 
   function toggleSkill(skill: SkillTag) {
     setSelectedSkills((prev) =>
@@ -79,7 +85,6 @@ export default function OnboardingPage() {
     if (!user || !teamName.trim() || selectedSkills.length === 0) return;
     setIsSaving(true);
     try {
-      // Create user record first (createOrg needs the user in DB)
       await upsertUser({
         clerkId: user.id,
         name: name.trim() || (user.fullName ?? user.username ?? "Unknown"),
@@ -89,7 +94,6 @@ export default function OnboardingPage() {
         avatarUrl: user.imageUrl ?? undefined,
         department: department.trim() || undefined,
       });
-      // Create the org — patches user with orgId + managedOrgId + role
       await createOrg({
         name: teamName.trim(),
         department: department.trim() || undefined,
@@ -107,7 +111,6 @@ export default function OnboardingPage() {
     setIsSaving(true);
     setInviteError(null);
     try {
-      // Create user record first (joinOrg needs the user in DB)
       await upsertUser({
         clerkId: user.id,
         name: name.trim() || (user.fullName ?? user.username ?? "Unknown"),
@@ -116,7 +119,6 @@ export default function OnboardingPage() {
         skillTags: selectedSkills,
         avatarUrl: user.imageUrl ?? undefined,
       });
-      // Join the org — patches user with orgId + role
       await joinOrg({ inviteCode });
       router.replace("/my");
     } catch (err: unknown) {
@@ -131,6 +133,26 @@ export default function OnboardingPage() {
     }
   }
 
+  /** Returning user joins another team — no role/skill re-selection needed. */
+  async function handleJoinAdditional() {
+    if (!user || inviteCode.length !== 6) return;
+    setIsSaving(true);
+    setInviteError(null);
+    try {
+      await joinOrg({ inviteCode });
+      router.replace("/my");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      setInviteError(
+        msg.includes("Invalid invite code")
+          ? "Invalid invite code — check with your manager"
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   // Loading guard
   if (me === undefined || !clerkLoaded) {
     return (
@@ -140,9 +162,61 @@ export default function OnboardingPage() {
     );
   }
 
-  // Already onboarded — redirect in progress
-  if (me?.orgId) return null;
+  // ── Returning user: already belongs to one or more orgs ──────────────────
+  const isReturningUser = !!(me?.orgIds?.length || me?.orgId);
+  if (isReturningUser) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 w-full max-w-md p-8 space-y-6">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold text-gray-900">Join another team</h1>
+            <p className="text-gray-500 text-sm">
+              Enter the invite code from your new manager. Your existing teams will stay active.
+            </p>
+          </div>
 
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-gray-700">Invite Code *</label>
+            <input
+              type="text"
+              value={inviteCode}
+              onChange={(e) => {
+                setInviteCode(e.target.value.toUpperCase().slice(0, 6));
+                setInviteError(null);
+              }}
+              placeholder="XXXXXX"
+              maxLength={6}
+              spellCheck={false}
+              autoFocus
+              className="w-full rounded-md border border-gray-200 px-4 py-3 text-xl font-mono tracking-[0.3em] text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center uppercase"
+            />
+            {inviteError && (
+              <p className="text-xs text-red-600 font-medium">{inviteError}</p>
+            )}
+          </div>
+
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => router.replace(me?.role === "manager" ? "/dashboard" : "/my")}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={inviteCode.length !== 6 || isSaving}
+              onClick={handleJoinAdditional}
+            >
+              {isSaving ? "Joining..." : "Join Team"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Full onboarding for new users ─────────────────────────────────────────
   const progressPct = step === 1 ? "50%" : "100%";
 
   return (
@@ -163,11 +237,11 @@ export default function OnboardingPage() {
           </div>
         </div>
 
-        {/* ── STEP 1 — Choose path ── */}
+        {/* STEP 1 — Choose path */}
         {step === 1 && (
           <>
             <div className="space-y-1">
-              <h1 className="text-2xl font-bold text-gray-900">Welcome to Coverly 👋</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Welcome to Coverly</h1>
               <p className="text-gray-500 text-sm">How do you want to get started?</p>
             </div>
 
@@ -209,7 +283,7 @@ export default function OnboardingPage() {
           </>
         )}
 
-        {/* ── STEP 2A — Create a team ── */}
+        {/* STEP 2A — Create a team */}
         {step === 2 && path === "create" && (
           <>
             <div className="space-y-1">
@@ -220,7 +294,6 @@ export default function OnboardingPage() {
             </div>
 
             <div className="space-y-5">
-              {/* Full Name */}
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-gray-700">Full Name *</label>
                 <input
@@ -232,7 +305,6 @@ export default function OnboardingPage() {
                 />
               </div>
 
-              {/* Team Name */}
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-gray-700">Team Name *</label>
                 <input
@@ -244,7 +316,6 @@ export default function OnboardingPage() {
                 />
               </div>
 
-              {/* Department */}
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-gray-700">
                   Department
@@ -259,7 +330,6 @@ export default function OnboardingPage() {
                 />
               </div>
 
-              {/* Skills */}
               <div className="space-y-3">
                 <label className="text-sm font-semibold text-gray-700">
                   Your Skills *
@@ -285,29 +355,23 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex gap-3">
                 <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
-                  ← Back
+                  Back
                 </Button>
                 <Button
                   onClick={handleCreate}
-                  disabled={
-                    !name.trim() ||
-                    !teamName.trim() ||
-                    selectedSkills.length === 0 ||
-                    isSaving
-                  }
+                  disabled={!name.trim() || !teamName.trim() || selectedSkills.length === 0 || isSaving}
                   className="flex-1"
                 >
-                  {isSaving ? "Creating..." : "Create Team →"}
+                  {isSaving ? "Creating..." : "Create Team"}
                 </Button>
               </div>
             </div>
           </>
         )}
 
-        {/* ── STEP 2B — Join a team ── */}
+        {/* STEP 2B — Join a team */}
         {step === 2 && path === "join" && (
           <>
             <div className="space-y-1">
@@ -318,7 +382,6 @@ export default function OnboardingPage() {
             </div>
 
             <div className="space-y-5">
-              {/* Full Name */}
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-gray-700">Full Name *</label>
                 <input
@@ -330,7 +393,6 @@ export default function OnboardingPage() {
                 />
               </div>
 
-              {/* Invite Code */}
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-gray-700">Invite Code *</label>
                 <input
@@ -350,7 +412,6 @@ export default function OnboardingPage() {
                 )}
               </div>
 
-              {/* Skills */}
               <div className="space-y-3">
                 <label className="text-sm font-semibold text-gray-700">
                   Your Skills *
@@ -376,28 +437,21 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex gap-3">
                 <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
-                  ← Back
+                  Back
                 </Button>
                 <Button
                   onClick={handleJoin}
-                  disabled={
-                    !name.trim() ||
-                    inviteCode.length !== 6 ||
-                    selectedSkills.length === 0 ||
-                    isSaving
-                  }
+                  disabled={!name.trim() || inviteCode.length !== 6 || selectedSkills.length === 0 || isSaving}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                 >
-                  {isSaving ? "Joining..." : "Join Team →"}
+                  {isSaving ? "Joining..." : "Join Team"}
                 </Button>
               </div>
             </div>
           </>
         )}
-
       </div>
     </div>
   );

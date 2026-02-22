@@ -21,16 +21,26 @@ async function requireCurrentUser(ctx: any) {
   return user;
 }
 
+async function tryGetCurrentUser(ctx: any) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return await ctx.db
+    .query("users")
+    .withIndex("by_clerkId", (q: any) => q.eq("clerkId", identity.subject))
+    .first();
+}
+
 // ─── queries ─────────────────────────────────────────────────────────────────
 
 export const getMyOrg = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireCurrentUser(ctx);
-    if (!user.orgId) return null;
+    const user = await tryGetCurrentUser(ctx);
+    const resolvedOrgId = user?.activeOrgId ?? user?.orgId;
+    if (!resolvedOrgId) return null;
     return await ctx.db
       .query("orgs")
-      .filter((q: any) => q.eq(q.field("_id"), user.orgId))
+      .filter((q: any) => q.eq(q.field("_id"), resolvedOrgId))
       .first();
   },
 });
@@ -38,11 +48,47 @@ export const getMyOrg = query({
 export const getMyManagedOrg = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireCurrentUser(ctx);
+    const user = await tryGetCurrentUser(ctx);
+    if (!user) return null;
     return await ctx.db
       .query("orgs")
       .withIndex("by_manager", (q: any) => q.eq("managerId", user._id as string))
       .first();
+  },
+});
+
+/** All orgs this user belongs to or manages, each annotated with isActive. */
+export const getMyOrgs = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await tryGetCurrentUser(ctx);
+    if (!user) return [];
+
+    const memberOrgIds: string[] = user.orgIds ?? [];
+
+    // Orgs user manages (includes sub-orgs they created, even if not in orgIds)
+    const managedOrgs = await ctx.db
+      .query("orgs")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_manager", (q: any) => q.eq("managerId", user._id as string))
+      .collect();
+
+    // Member orgs fetched individually
+    const memberOrgs = (
+      await Promise.all(memberOrgIds.map((id) => ctx.db.get(id as any)))
+    ).filter((o): o is NonNullable<typeof o> => o !== null);
+
+    // Merge and deduplicate
+    const seen = new Set<string>();
+    const result: Array<typeof memberOrgs[number] & { isActive: boolean }> = [];
+    for (const o of [...memberOrgs, ...managedOrgs]) {
+      const id = o._id as string;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const activeId = (user.activeOrgId ?? user.orgId) as string | undefined;
+      result.push({ ...o, isActive: id === activeId });
+    }
+    return result;
   },
 });
 
@@ -85,10 +131,8 @@ export const getAllOrgsInTree = query({
 export const getOrgMembers = query({
   args: { orgId: v.string() },
   handler: async (ctx, { orgId }) => {
-    return await ctx.db
-      .query("users")
-      .withIndex("by_orgId", (q: any) => q.eq("orgId", orgId))
-      .collect();
+    const all = await ctx.db.query("users").collect();
+    return all.filter((u) => (u.activeOrgId ?? u.orgId) === orgId);
   },
 });
 
@@ -113,9 +157,15 @@ export const createOrg = mutation({
       createdAt: Date.now(),
     });
 
+    const orgIdStr = orgId as string;
+    const existingOrgIds: string[] = user.orgIds ?? [];
+
     await ctx.db.patch(user._id, {
-      orgId: orgId as string,
-      managedOrgId: orgId as string,
+      orgIds: existingOrgIds.includes(orgIdStr)
+        ? existingOrgIds
+        : [...existingOrgIds, orgIdStr],
+      activeOrgId: orgIdStr,
+      managedOrgId: orgIdStr,
       role: "manager",
     });
 
@@ -152,6 +202,15 @@ export const createSubOrg = mutation({
       createdAt: Date.now(),
     });
 
+    // Add the new sub-org to the manager's orgIds so it appears in getMyOrgs
+    const subOrgIdStr = subOrgId as string;
+    const existingOrgIds: string[] = user.orgIds ?? [];
+    if (!existingOrgIds.includes(subOrgIdStr)) {
+      await ctx.db.patch(user._id, {
+        orgIds: [...existingOrgIds, subOrgIdStr],
+      });
+    }
+
     return { subOrgId, inviteCode };
   },
 });
@@ -168,11 +227,29 @@ export const joinOrg = mutation({
 
     if (!org) throw new Error("Invalid invite code");
 
+    const orgIdStr = org._id as string;
+    const existingOrgIds: string[] = user.orgIds ?? [];
+    const newOrgIds = existingOrgIds.includes(orgIdStr)
+      ? existingOrgIds
+      : [...existingOrgIds, orgIdStr];
+
     await ctx.db.patch(user._id, {
-      orgId: org._id as string,
+      orgIds: newOrgIds,
+      activeOrgId: orgIdStr,
       role: "member",
     });
 
     return org;
+  },
+});
+
+/** Switch the caller's active org to any org they already belong to. */
+export const switchOrg = mutation({
+  args: { orgId: v.string() },
+  handler: async (ctx, { orgId }) => {
+    const user = await requireCurrentUser(ctx);
+    const orgIds: string[] = user.orgIds ?? [];
+    if (!orgIds.includes(orgId)) throw new Error("Not a member of this org");
+    await ctx.db.patch(user._id, { activeOrgId: orgId });
   },
 });

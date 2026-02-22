@@ -1,6 +1,5 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { Id } from "./_generated/dataModel";
 
 export const getPendingReassignments = query({
   args: {},
@@ -57,7 +56,18 @@ export const approveReassignment = mutation({
 
     const toUserId = args.overrideToUserId ?? reassignment.toUserId;
 
-    await ctx.db.patch(reassignment.taskId as Id<"tasks">, {
+    // Use filter query to get a native Id from the stored string,
+    // avoiding the unreliable `as Id<"tasks">` cast on a v.string() field.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const task = await ctx.db
+      .query("tasks")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((q: any) => q.eq(q.field("_id"), reassignment.taskId))
+      .first();
+
+    if (!task) throw new Error("Task not found: " + reassignment.taskId);
+
+    await ctx.db.patch(task._id, {
       assigneeId: toUserId,
       handoffDoc: reassignment.handoffDoc,
       isAtRisk: false,
@@ -75,5 +85,23 @@ export const rejectReassignment = mutation({
   args: { id: v.id("reassignments") },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.id, { status: "rejected" });
+  },
+});
+
+export const revertReassignment = mutation({
+  args: { id: v.id("reassignments") },
+  handler: async (ctx, args) => {
+    const reassignment = await ctx.db.get(args.id);
+    if (!reassignment) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const task = await ctx.db
+      .query("tasks")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((q: any) => q.eq(q.field("_id"), reassignment.taskId))
+      .first();
+    if (task) {
+      await ctx.db.patch(task._id, { assigneeId: reassignment.fromUserId });
+    }
+    await ctx.db.delete(args.id);
   },
 });

@@ -15,12 +15,13 @@ export default defineSchema({
     timezone: v.optional(v.string()),
     weeklyCapacity: v.optional(v.number()),
     currentFocus: v.optional(v.string()),
-    orgId: v.optional(v.string()),
+    orgId: v.optional(v.string()),            // legacy field — tolerated but not used
+    orgIds: v.optional(v.array(v.string())), // all orgs this user belongs to
+    activeOrgId: v.optional(v.string()),     // currently active org
     managedOrgId: v.optional(v.string()),
   })
     .index("by_clerkId", ["clerkId"])
-    .index("by_teamId", ["teamId"])
-    .index("by_orgId", ["orgId"]),
+    .index("by_teamId", ["teamId"]),
 
   orgs: defineTable({
     name: v.string(),
@@ -69,11 +70,29 @@ export default defineSchema({
     notes: v.optional(v.string()),
     handoffDoc: v.optional(v.string()),
     isAtRisk: v.boolean(),
+    completionStatus: v.optional(v.union(
+      v.literal("pending_approval"),
+      v.literal("approved"),
+      v.literal("needs_improvement")
+    )),
+    completionNote: v.optional(v.string()),
+    completionRequestedAt: v.optional(v.number()),
+    completionApprovedAt: v.optional(v.number()),
+    completedByManager: v.optional(v.boolean()),
   })
     .index("by_assigneeId", ["assigneeId"])
     .index("by_projectTag", ["projectTag"])
     .index("by_status", ["status"])
     .index("by_isAtRisk", ["isAtRisk"]),
+
+  taskComments: defineTable({
+    taskId: v.string(),
+    userId: v.string(),
+    content: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_user", ["userId"]),
 
   reassignments: defineTable({
     taskId: v.string(),

@@ -12,6 +12,7 @@ import type * as availability from "../availability.js";
 import type * as orgs from "../orgs.js";
 import type * as reassignments from "../reassignments.js";
 import type * as seed from "../seed.js";
+import type * as taskComments from "../taskComments.js";
 import type * as tasks from "../tasks.js";
 import type * as users from "../users.js";
 
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   orgs: typeof orgs;
   reassignments: typeof reassignments;
   seed: typeof seed;
+  taskComments: typeof taskComments;
   tasks: typeof tasks;
   users: typeof users;
 }>;

@@ -39,24 +39,28 @@ export const getTeamMembers = query({
       .query("users")
       .withIndex("by_clerkId", (q) => q.eq("clerkId", clerkId))
       .first();
-    if (!user?.orgId) {
+    const userOrgId = (user?.activeOrgId ?? user?.orgId) as string | undefined;
+    if (!userOrgId) {
       return await ctx.db
         .query("users")
         .filter((q) => q.eq(q.field("role"), "member"))
         .collect();
     }
-    const orgIds: string[] = [user.orgId];
+    const orgIds: string[] = [userOrgId];
     const org = await ctx.db
       .query("orgs")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((q: any) => q.eq(q.field("_id"), user.orgId))
+      .filter((q: any) => q.eq(q.field("_id"), userOrgId))
       .first();
-    if (org?.parentOrgId) orgIds.push(org.parentOrgId);
+    if (org?.parentOrgId) orgIds.push(org.parentOrgId as string);
     const allMembers = await ctx.db
       .query("users")
       .filter((q) => q.eq(q.field("role"), "member"))
       .collect();
-    return allMembers.filter((m) => m.orgId && orgIds.includes(m.orgId));
+    return allMembers.filter((m) => {
+      const memberOrgId = (m.activeOrgId ?? m.orgId) as string | undefined;
+      return memberOrgId && orgIds.includes(memberOrgId);
+    });
   },
 });
 
@@ -97,7 +101,66 @@ export const upsertUser = mutation({
     return await ctx.db.insert("users", {
       ...args,
       workloadScore: 0,
+      orgIds: [],
     });
+  },
+});
+
+export const switchOrg = mutation({
+  args: { orgId: v.string() },
+  handler: async (ctx, { orgId }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
+      .first();
+    if (!user) throw new Error("User not found");
+
+    // Check if user is a member OR a manager of this org
+    const org = await ctx.db
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .query("orgs")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((q: any) => q.eq(q.field("_id"), orgId))
+      .first();
+    if (!org) throw new Error("Org not found");
+
+    const isMember = (user.orgIds ?? []).includes(orgId);
+    const isManager = (org.managerId as string) === (user._id as string);
+
+    if (!isMember && !isManager) {
+      throw new Error("Not a member of this org");
+    }
+
+    // If manager but not yet in orgIds, add it now
+    if (!isMember && isManager) {
+      await ctx.db.patch(user._id, {
+        orgIds: [...(user.orgIds ?? []), orgId],
+        activeOrgId: orgId,
+      });
+      return;
+    }
+
+    await ctx.db.patch(user._id, { activeOrgId: orgId });
+  },
+});
+
+export const updateMemberRole = mutation({
+  args: {
+    targetUserId: v.string(),
+    newRole: v.union(v.literal("manager"), v.literal("member")),
+  },
+  handler: async (ctx, { targetUserId, newRole }) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    const caller = await ctx.db
+      .query("users")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
+      .first();
+    if (!caller || caller.role !== "manager") throw new Error("Only managers can change roles");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await ctx.db.patch(targetUserId as any, { role: newRole });
   },
 });
 

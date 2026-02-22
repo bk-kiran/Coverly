@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "../../../../../convex/_generated/api";
 import {
   SuggestReassignmentRequest,
   SuggestReassignmentResponse,
   ReassignmentSuggestion,
 } from "@/types";
 import { computeWorkloadScore } from "@/lib/workload";
+
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -21,6 +25,19 @@ export async function POST(req: NextRequest) {
   try {
     const { tasksAtRisk, availableMembers, allTasks }: SuggestReassignmentRequest =
       await req.json();
+
+    // Fetch comments for each at-risk task
+    const tasksWithComments = await Promise.all(
+      tasksAtRisk.map(async (task) => {
+        const comments = await convex.query(api.taskComments.getCommentsByTask, {
+          taskId: getId(task),
+        });
+        return {
+          ...task,
+          comments: comments.map((c) => `${c.userName}: ${c.content}`),
+        };
+      })
+    );
 
     // Compute workload for each available member
     const memberWorkloads = availableMembers.map((member) => {
@@ -41,7 +58,7 @@ export async function POST(req: NextRequest) {
       )
       .join("\n");
 
-    const taskDetails = tasksAtRisk
+    const taskDetails = tasksWithComments
       .map(
         (task) =>
           `- Task ID: ${getId(task)}
@@ -52,7 +69,9 @@ export async function POST(req: NextRequest) {
   Deadline: ${task.deadline}
   Project: ${task.projectTag}
   Skill Required: ${task.skillRequired ?? "none"}
-  Notes: ${task.notes ?? "none"}`
+  Notes: ${task.notes ?? "none"}
+  Comments from owner:
+${task.comments.length > 0 ? task.comments.map((c) => `    • ${c}`).join("\n") : "    (none)"}`
       )
       .join("\n");
 
@@ -78,6 +97,8 @@ Write a 3-5 sentence handoff doc per task that covers:
 - Key context or decisions the new assignee needs to know
 - The deadline and how urgent it is
 - Any known blockers or risks
+
+Each task may have comments from the original owner providing context. Use these comments to make the handoff doc more specific and useful. Quote relevant comments directly in the handoff doc.
 
 ## Response Format
 Return a JSON object with a "suggestions" key containing an array. Each item in the array must have exactly these fields:

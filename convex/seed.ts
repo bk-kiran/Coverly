@@ -33,6 +33,8 @@ export const seedDemoData = mutation({
       role: "manager",
       skillTags: ["project-management"],
       workloadScore: 40,
+      orgIds: [],
+      activeOrgId: undefined,
     });
 
     const alexId = await ctx.db.insert("users", {
@@ -42,6 +44,8 @@ export const seedDemoData = mutation({
       role: "member",
       skillTags: ["frontend", "design"],
       workloadScore: 35,
+      orgIds: [],
+      activeOrgId: undefined,
     });
 
     const jamieId = await ctx.db.insert("users", {
@@ -51,6 +55,8 @@ export const seedDemoData = mutation({
       role: "member",
       skillTags: ["backend", "devops"],
       workloadScore: 72,
+      orgIds: [],
+      activeOrgId: undefined,
     });
 
     const morganId = await ctx.db.insert("users", {
@@ -60,6 +66,8 @@ export const seedDemoData = mutation({
       role: "member",
       skillTags: ["data", "ai-ml"],
       workloadScore: 20,
+      orgIds: [],
+      activeOrgId: undefined,
     });
 
     const taylorId = await ctx.db.insert("users", {
@@ -69,6 +77,8 @@ export const seedDemoData = mutation({
       role: "member",
       skillTags: ["frontend", "qa"],
       workloadScore: 88,
+      orgIds: [],
+      activeOrgId: undefined,
     });
 
     // ── Tasks ────────────────────────────────────────────────────────────────

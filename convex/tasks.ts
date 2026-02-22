@@ -8,19 +8,24 @@ async function getOrgMemberIds(ctx: any, clerkId: string): Promise<Set<string>> 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .withIndex("by_clerkId", (q: any) => q.eq("clerkId", clerkId))
     .first();
-  if (!user?.orgId) return new Set<string>();
-  const orgIds: string[] = [user.orgId as string];
+  const userOrgId = (user?.activeOrgId ?? user?.orgId) as string | undefined;
+  if (!userOrgId) return new Set<string>();
+  const orgIds: string[] = [userOrgId];
   const org = await ctx.db
     .query("orgs")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .filter((q: any) => q.eq(q.field("_id"), user.orgId))
+    .filter((q: any) => q.eq(q.field("_id"), userOrgId))
     .first();
   if (org?.parentOrgId) orgIds.push(org.parentOrgId as string);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allUsers: any[] = await ctx.db.query("users").collect();
   return new Set<string>(
     allUsers
-      .filter((u) => u.orgId && orgIds.includes(u.orgId as string))
+      .filter((u) => {
+        // Use orgId as fallback for legacy users (mirrors getTeamMembers logic)
+        const memberOrgId = (u.activeOrgId ?? u.orgId) as string | undefined;
+        return memberOrgId && orgIds.includes(memberOrgId);
+      })
       .map((u) => u._id as string)
   );
 }
@@ -139,5 +144,49 @@ export const deleteTask = mutation({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
+  },
+});
+
+export const requestCompletion = mutation({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, { taskId }) => {
+    await ctx.db.patch(taskId, {
+      completionStatus: "pending_approval",
+      completionRequestedAt: Date.now(),
+    });
+  },
+});
+
+export const approveCompletion = mutation({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, { taskId }) => {
+    await ctx.db.patch(taskId, {
+      status: "done",
+      completionStatus: "approved",
+      completionApprovedAt: Date.now(),
+    });
+  },
+});
+
+export const rejectCompletion = mutation({
+  args: { taskId: v.id("tasks"), note: v.string() },
+  handler: async (ctx, { taskId, note }) => {
+    await ctx.db.patch(taskId, {
+      completionStatus: "needs_improvement",
+      completionNote: note,
+      status: "in_progress",
+    });
+  },
+});
+
+export const directComplete = mutation({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, { taskId }) => {
+    await ctx.db.patch(taskId, {
+      status: "done",
+      completionStatus: "approved",
+      completionApprovedAt: Date.now(),
+      completedByManager: true,
+    });
   },
 });
