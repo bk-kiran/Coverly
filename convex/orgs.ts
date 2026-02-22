@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ export const getMyOrgs = query({
 
     // Member orgs fetched individually
     const memberOrgs = (
-      await Promise.all(memberOrgIds.map((id) => ctx.db.get(id as any)))
+      await Promise.all(memberOrgIds.map((id) => ctx.db.get(id as Id<"orgs">)))
     ).filter((o): o is NonNullable<typeof o> => o !== null);
 
     // Merge and deduplicate

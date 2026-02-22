@@ -154,7 +154,8 @@ export function AvailabilityHeatmap({
     : [];
 
   const selectedScore: number = selectedCell
-    ? computeWorkloadScore(selectedMemberTasks)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ? computeWorkloadScore(selectedMemberTasks as any[])
     : 0;
 
   const isUnavailable =
