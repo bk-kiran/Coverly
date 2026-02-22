@@ -2,14 +2,13 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const getMe = query({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
+  args: { clerkId: v.optional(v.string()) },
+  handler: async (ctx, { clerkId }) => {
+    if (!clerkId) return null;
     return await ctx.db
       .query("users")
-      .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
-      .unique();
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", clerkId))
+      .first();
   },
 });
 
@@ -47,6 +46,8 @@ export const upsertUser = mutation({
     avatarUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    console.log("upsertUser called with:", args);
+
     const existing = await ctx.db
       .query("users")
       .withIndex("by_clerkId", (q) => q.eq("clerkId", args.clerkId))
@@ -60,13 +61,16 @@ export const upsertUser = mutation({
         skillTags: args.skillTags,
         avatarUrl: args.avatarUrl,
       });
+      console.log("upsertUser result: patched existing", existing._id);
       return existing._id;
     }
 
-    return await ctx.db.insert("users", {
+    const newId = await ctx.db.insert("users", {
       ...args,
       workloadScore: 0,
     });
+    console.log("upsertUser result: inserted new user", newId);
+    return newId;
   },
 });
 

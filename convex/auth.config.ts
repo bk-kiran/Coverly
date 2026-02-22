@@ -1,7 +1,7 @@
 export default {
   providers: [
     {
-      domain: process.env.CLERK_JWT_ISSUER_DOMAIN,
+      domain: "https://smooth-dory-44.clerk.accounts.dev",
       applicationID: "convex",
     },
   ],

@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
+import { useUser } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
 import { api } from "../../../convex/_generated/api";
 import { AvailabilityPicker } from "@/components/member/AvailabilityPicker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,11 +38,28 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function MyPage() {
-  const me = useQuery(api.users.getMe);
+  const { user: clerkUser } = useUser();
+  const router = useRouter();
+  const me = useQuery(api.users.getMe, { clerkId: clerkUser?.id });
   const myTasks = useQuery(
     api.tasks.getTasksByAssignee,
     me ? { assigneeId: me._id as string } : "skip"
   );
+
+  useEffect(() => {
+    if (me === undefined) return;
+    if (me === null) { router.replace("/onboarding"); return; }
+    if (me.role === "manager") { router.replace("/dashboard"); return; }
+  }, [me, router]);
+
+  if (me === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    );
+  }
+  if (me === null || me.role === "manager") return null;
 
   const activeTasks = (myTasks ?? []).filter((t) => t.status !== "done");
   const workloadScore = computeWorkloadScore(activeTasks);

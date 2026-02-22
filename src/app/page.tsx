@@ -1,12 +1,29 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+"use client";
 
-export default async function Home() {
-  const { userId } = await auth();
+import { useEffect } from "react";
+import { useUser } from "@clerk/nextjs";
+import { useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
+import { api } from "../../convex/_generated/api";
 
-  if (!userId) {
-    redirect("/sign-in");
-  }
+export default function Home() {
+  const { isLoaded, isSignedIn, user } = useUser();
+  const me = useQuery(api.users.getMe, { clerkId: user?.id });
+  const router = useRouter();
 
-  redirect("/onboarding");
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      router.replace("/sign-in");
+      return;
+    }
+    if (me === undefined) return; // still loading from Convex
+    if (me === null) {
+      router.replace("/onboarding");
+      return;
+    }
+    router.replace(me.role === "manager" ? "/dashboard" : "/my");
+  }, [isLoaded, isSignedIn, me, router]);
+
+  return null;
 }

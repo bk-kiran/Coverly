@@ -2,12 +2,13 @@
 
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 export function Navbar() {
-  const me = useQuery(api.users.getMe);
+  const { user: clerkUser } = useUser();
+  const me = useQuery(api.users.getMe, { clerkId: clerkUser?.id });
   const pathname = usePathname();
 
   const navLink =

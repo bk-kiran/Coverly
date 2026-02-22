@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "../../../convex/_generated/api";
 import { UserRole, SkillTag } from "@/types";
@@ -34,13 +34,21 @@ const ROLE_OPTIONS: { value: UserRole; label: string; description: string }[] = 
 ];
 
 export default function OnboardingPage() {
-  const { user } = useUser();
+  const { user, isLoaded: clerkLoaded } = useUser();
   const router = useRouter();
   const upsertUser = useMutation(api.users.upsertUser);
+  const me = useQuery(api.users.getMe, { clerkId: user?.id });
 
   const [role, setRole] = useState<UserRole>("member");
   const [selectedSkills, setSelectedSkills] = useState<SkillTag[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Redirect existing users away from onboarding
+  useEffect(() => {
+    if (me === undefined) return; // still loading
+    if (me === null) return;      // new user, show form
+    router.replace(me.role === "manager" ? "/dashboard" : "/my");
+  }, [me, router]);
 
   function toggleSkill(skill: SkillTag) {
     setSelectedSkills((prev) =>
@@ -50,28 +58,41 @@ export default function OnboardingPage() {
 
   async function handleSubmit() {
     if (!user || selectedSkills.length === 0) return;
-
     setIsSaving(true);
     try {
-      await upsertUser({
+      const args = {
         clerkId: user.id,
         name: user.fullName ?? user.username ?? "Unknown",
         email: user.primaryEmailAddress?.emailAddress ?? "",
         role,
         skillTags: selectedSkills,
         avatarUrl: user.imageUrl ?? undefined,
-      });
-
-      if (role === "manager") {
-        router.push("/dashboard");
-      } else {
-        router.push("/my");
-      }
+      };
+      console.log("Upserting user with:", args);
+      await upsertUser(args);
+      console.log("upsertUser succeeded, navigating to:", role === "manager" ? "/dashboard" : "/my");
+      // Navigate immediately based on chosen role — don't wait for me to update
+      router.replace(role === "manager" ? "/dashboard" : "/my");
+    } catch (err) {
+      console.error("onboarding upsertUser failed:", err);
     } finally {
       setIsSaving(false);
     }
   }
 
+  // Show loading while Convex query or Clerk user is resolving
+  if (me === undefined || !clerkLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    );
+  }
+
+  // Existing user — redirect in progress via useEffect
+  if (me !== null) return null;
+
+  // Only new users (me === null) reach here
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 w-full max-w-lg p-8 space-y-8">
@@ -155,7 +176,7 @@ export default function OnboardingPage() {
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={selectedSkills.length === 0 || isSaving}
+          disabled={!user || selectedSkills.length === 0 || isSaving}
           className="w-full rounded-xl bg-blue-600 text-white py-3 text-sm font-semibold transition-all hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {isSaving ? "Setting up..." : "Get Started →"}
