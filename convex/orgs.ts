@@ -22,6 +22,26 @@ async function requireCurrentUser(ctx: any) {
   return user;
 }
 
+async function requireManagedOrg(ctx: any, orgId: string) {
+  const user = await requireCurrentUser(ctx);
+  if (user.role !== "manager") {
+    throw new Error("Only team managers can manage organizations");
+  }
+
+  const org = await ctx.db
+    .query("orgs")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .filter((q: any) => q.eq(q.field("_id"), orgId))
+    .first();
+
+  if (!org) throw new Error("Organization not found");
+  if ((org.managerId as string) !== (user._id as string)) {
+    throw new Error("Only this organization's manager can manage it");
+  }
+
+  return { user, org };
+}
+
 async function tryGetCurrentUser(ctx: any) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
@@ -252,5 +272,59 @@ export const switchOrg = mutation({
     const orgIds: string[] = user.orgIds ?? [];
     if (!orgIds.includes(orgId)) throw new Error("Not a member of this org");
     await ctx.db.patch(user._id, { activeOrgId: orgId });
+  },
+});
+
+export const renameOrg = mutation({
+  args: {
+    orgId: v.string(),
+    name: v.string(),
+    department: v.optional(v.string()),
+  },
+  handler: async (ctx, { orgId, name, department }) => {
+    const trimmedName = name.trim();
+    if (!trimmedName) throw new Error("Organization name is required");
+
+    const { org } = await requireManagedOrg(ctx, orgId);
+    await ctx.db.patch(org._id, {
+      name: trimmedName,
+      department: department?.trim() || undefined,
+    });
+  },
+});
+
+export const deleteOrg = mutation({
+  args: { orgId: v.string() },
+  handler: async (ctx, { orgId }) => {
+    const { org } = await requireManagedOrg(ctx, orgId);
+
+    const childOrgs = await ctx.db
+      .query("orgs")
+      .withIndex("by_parent", (q: any) => q.eq("parentOrgId", orgId))
+      .collect();
+    if (childOrgs.length > 0) {
+      throw new Error("Delete sub-orgs first before deleting this organization");
+    }
+
+    const users = await ctx.db.query("users").collect();
+    for (const member of users) {
+      const existingOrgIds: string[] = member.orgIds ?? [];
+      const nextOrgIds = existingOrgIds.filter((id) => id !== orgId);
+      const inOrgIds = nextOrgIds.length !== existingOrgIds.length;
+      const activeMatches = (member.activeOrgId as string | undefined) === orgId;
+      const legacyMatches = (member.orgId as string | undefined) === orgId;
+      const managedMatches = (member.managedOrgId as string | undefined) === orgId;
+
+      if (!inOrgIds && !activeMatches && !legacyMatches && !managedMatches) continue;
+
+      await ctx.db.patch(member._id, {
+        orgIds: nextOrgIds,
+        activeOrgId: activeMatches ? nextOrgIds[0] : member.activeOrgId,
+        orgId: legacyMatches ? nextOrgIds[0] : member.orgId,
+        managedOrgId: managedMatches ? undefined : member.managedOrgId,
+      });
+    }
+
+    await ctx.db.delete(org._id);
   },
 });

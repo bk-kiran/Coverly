@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertTriangle, Users, CheckSquare, Zap, Plus, Copy, Check, Building2, CalendarCheck, Sparkles, Scale } from "lucide-react";
+import { AlertTriangle, Users, CheckSquare, Zap, Plus, Copy, Check, Building2, CalendarCheck, Sparkles, Scale, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 
 const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
@@ -70,6 +70,8 @@ export default function DashboardPage() {
   );
   const createTask = useMutation(api.tasks.createTask);
   const createSubOrg = useMutation(api.orgs.createSubOrg);
+  const renameOrg = useMutation(api.orgs.renameOrg);
+  const deleteOrg = useMutation(api.orgs.deleteOrg);
   const createReassignment = useMutation(api.reassignments.createReassignment);
   const approveReassignment = useMutation(api.reassignments.approveReassignment);
 
@@ -138,6 +140,15 @@ export default function DashboardPage() {
   const [subOrgForm, setSubOrgForm] = useState({ name: "", department: "" });
   const [isCreatingSubOrg, setIsCreatingSubOrg] = useState(false);
   const [newSubOrgCode, setNewSubOrgCode] = useState<string | null>(null);
+  const [renameDialog, setRenameDialog] = useState<{
+    orgId: string;
+    name: string;
+    department: string;
+  } | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ orgId: string; name: string } | null>(null);
+  const [isRenamingOrg, setIsRenamingOrg] = useState(false);
+  const [isDeletingOrg, setIsDeletingOrg] = useState(false);
+  const [orgActionError, setOrgActionError] = useState<string | null>(null);
 
   function handleCopyInvite() {
     if (!myOrg?.inviteCode) return;
@@ -168,6 +179,56 @@ export default function DashboardPage() {
     setIsSubOrgOpen(false);
     setNewSubOrgCode(null);
     setSubOrgForm({ name: "", department: "" });
+  }
+
+  function openRenameOrgDialog(org: { _id: string; name: string; department?: string }) {
+    setOrgActionError(null);
+    setRenameDialog({
+      orgId: org._id,
+      name: org.name,
+      department: org.department ?? "",
+    });
+  }
+
+  function openDeleteOrgDialog(org: { _id: string; name: string }) {
+    setOrgActionError(null);
+    setDeleteDialog({ orgId: org._id, name: org.name });
+  }
+
+  async function handleRenameOrg() {
+    if (!renameDialog || !renameDialog.name.trim()) return;
+    setIsRenamingOrg(true);
+    setOrgActionError(null);
+    try {
+      await renameOrg({
+        orgId: renameDialog.orgId,
+        name: renameDialog.name.trim(),
+        department: renameDialog.department.trim() || undefined,
+      });
+      setRenameDialog(null);
+    } catch (err: unknown) {
+      setOrgActionError(err instanceof Error ? err.message : "Failed to rename organization");
+    } finally {
+      setIsRenamingOrg(false);
+    }
+  }
+
+  async function handleDeleteOrg() {
+    if (!deleteDialog) return;
+    setIsDeletingOrg(true);
+    setOrgActionError(null);
+    try {
+      await deleteOrg({ orgId: deleteDialog.orgId });
+      const deletedActiveOrg = deleteDialog.orgId === (myOrg?._id as string | undefined);
+      setDeleteDialog(null);
+      if (deletedActiveOrg) {
+        router.refresh();
+      }
+    } catch (err: unknown) {
+      setOrgActionError(err instanceof Error ? err.message : "Failed to delete organization");
+    } finally {
+      setIsDeletingOrg(false);
+    }
   }
 
   useEffect(() => {
@@ -483,6 +544,31 @@ export default function DashboardPage() {
                         <p className="text-xs text-gray-400">{myOrg.department}</p>
                       )}
                     </div>
+                    <button
+                      onClick={() =>
+                        openRenameOrgDialog({
+                          _id: myOrg._id as string,
+                          name: myOrg.name,
+                          department: myOrg.department,
+                        })
+                      }
+                      className="ml-auto flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      Rename
+                    </button>
+                    <button
+                      onClick={() =>
+                        openDeleteOrgDialog({
+                          _id: myOrg._id as string,
+                          name: myOrg.name,
+                        })
+                      }
+                      className="flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Delete
+                    </button>
                   </div>
 
                   <div className="space-y-1.5">
@@ -572,6 +658,33 @@ export default function DashboardPage() {
                           <span className="font-mono text-xs text-gray-500 flex-shrink-0 ml-3">
                             {sub.inviteCode}
                           </span>
+                          <div className="ml-3 flex items-center gap-1">
+                            <button
+                              onClick={() =>
+                                openRenameOrgDialog({
+                                  _id: sub._id as string,
+                                  name: sub.name,
+                                  department: sub.department,
+                                })
+                              }
+                              className="rounded border border-gray-200 p-1 text-gray-500 hover:bg-white transition-colors"
+                              aria-label={`Rename ${sub.name}`}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={() =>
+                                openDeleteOrgDialog({
+                                  _id: sub._id as string,
+                                  name: sub.name,
+                                })
+                              }
+                              className="rounded border border-red-200 p-1 text-red-500 hover:bg-red-50 transition-colors"
+                              aria-label={`Delete ${sub.name}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -771,6 +884,122 @@ export default function DashboardPage() {
       </div>
 
       {/* Rebalance Team Dialog */}
+      <Dialog
+        open={!!renameDialog}
+        onOpenChange={(open) => {
+          if (!open && !isRenamingOrg) {
+            setRenameDialog(null);
+            setOrgActionError(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename organization</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">Organization name</label>
+              <input
+                type="text"
+                value={renameDialog?.name ?? ""}
+                onChange={(e) =>
+                  setRenameDialog((prev) => (prev ? { ...prev, name: e.target.value } : prev))
+                }
+                className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">
+                Department <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={renameDialog?.department ?? ""}
+                onChange={(e) =>
+                  setRenameDialog((prev) =>
+                    prev ? { ...prev, department: e.target.value } : prev
+                  )
+                }
+                className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            {orgActionError && (
+              <p className="text-xs text-red-600">{orgActionError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setRenameDialog(null);
+                setOrgActionError(null);
+              }}
+              disabled={isRenamingOrg}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleRenameOrg}
+              disabled={isRenamingOrg || !renameDialog?.name.trim()}
+            >
+              {isRenamingOrg ? "Saving..." : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!deleteDialog}
+        onOpenChange={(open) => {
+          if (!open && !isDeletingOrg) {
+            setDeleteDialog(null);
+            setOrgActionError(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete organization</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-gray-600">
+              This will permanently delete{" "}
+              <span className="font-semibold text-gray-900">{deleteDialog?.name}</span>.
+            </p>
+            <p className="text-xs text-gray-500">
+              You can only delete orgs that have no sub-orgs.
+            </p>
+            {orgActionError && (
+              <p className="text-xs text-red-600">{orgActionError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDeleteDialog(null);
+                setOrgActionError(null);
+              }}
+              disabled={isDeletingOrg}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleDeleteOrg}
+              disabled={isDeletingOrg}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeletingOrg ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={rebalanceOpen}
         onOpenChange={(open) => {
