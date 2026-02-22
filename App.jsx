@@ -1091,8 +1091,24 @@ const DarkToggle = ({ dark, onToggle }) => (
    APP ROOT
 ═══════════════════════════════════════════════════════ */
 export default function App() {
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(() => {
+    const systemDark = typeof window !== "undefined"
+      && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (systemDark) document.documentElement.classList.add("dark");
+    return systemDark;
+  });
   const [selectedId, setSelectedId] = useState(1);
+
+  // Keep in sync if the OS theme changes while the app is open
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e) => {
+      setDark(e.matches);
+      document.documentElement.classList.toggle("dark", e.matches);
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   const toggleDark = () => {
     const next = !dark;
